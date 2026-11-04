@@ -1,0 +1,396 @@
+package emanondev.itemedit.gui;
+
+import emanondev.itemedit.ItemEdit;
+import emanondev.itemedit.Util;
+import emanondev.itemedit.aliases.Aliases;
+import emanondev.itemedit.utility.ItemUtils;
+import lombok.Getter;
+import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
+import org.bukkit.DyeColor;
+import org.bukkit.GameMode;
+import org.bukkit.Material;
+import org.bukkit.block.banner.Pattern;
+import org.bukkit.block.banner.PatternType;
+import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.*;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BannerMeta;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class BannerEditor implements Gui {
+
+    private static final String SUB_PATH = "gui.banner.";
+    private final static PatternType[] TYPES = ItemUtils.getPatternTypesFiltered();
+    private final Player target;
+    private final Inventory inventory;
+    private final List<BannerData> layers = new ArrayList<>();
+    private final ItemStack banner;
+    private BannerMeta meta;
+
+    public BannerEditor(Player target, ItemStack item) {
+        if (item == null || !(item.getItemMeta() instanceof BannerMeta)) {
+            try {
+                item = new ItemStack(Material.WHITE_BANNER);
+            } catch (Exception e) {
+                item = new ItemStack(Material.valueOf("BANNER"));
+            }
+        }
+        this.banner = item;
+        this.meta = (BannerMeta) ItemUtils.getMeta(banner);
+        this.target = target;
+        Component title = getLanguageComponent(SUB_PATH + "title");
+        this.inventory = Bukkit.createInventory(this, (6) * 9, title);
+        for (int i = 0; i < 8; i++) {
+            if (i < meta.getPatterns().size()) {
+                layers.add(new BannerData(meta.getPatterns().get(i)));
+            } else {
+                layers.add(new BannerData());
+            }
+        }
+        updateInventory();
+    }
+
+    @Override
+    public @NotNull ItemEdit getPlugin() {
+        return ItemEdit.get();
+    }
+
+    @Override
+    public void onClose(InventoryCloseEvent event) {
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public void onClick(InventoryClickEvent event) {
+        if (!event.getWhoClicked().equals(target)) {
+            return;
+        }
+        if (!inventory.equals(event.getClickedInventory())) {
+            return;
+        }
+        if (ItemUtils.isAirOrNull(event.getCurrentItem())) {
+            return;
+        }
+        if (event.getSlot() % 9 == 0) {
+            openGuiNextTick(() -> new ColorSelector(null));
+            return;
+        }
+        BannerData layer = layers.get(event.getSlot() % 9 - 1);
+        if (event.getSlot() > 9 && event.getSlot() < 18) {
+            if (event.getClick() == ClickType.MIDDLE || event.getClick() == ClickType.CREATIVE
+                    || (event.getClick() == ClickType.NUMBER_KEY && event.getHotbarButton() == 0)) {
+                layer.active = !layer.active;
+            } else if (event.isLeftClick()) {
+                if (event.getSlot() == 10) {
+                    return;
+                }
+                layers.add(event.getSlot() - 2 - 9, layers.remove(event.getSlot() - 9 - 1));
+            } else if (event.isRightClick()) {
+                if (event.getSlot() == 17) {
+                    return;
+                }
+                layers.add(event.getSlot() - 9, layers.remove(event.getSlot() - 9 - 1));
+            }
+            updateInventory();
+            return;
+        }
+        if (event.getSlot() < 45) {
+            if (!layer.active) {
+                return;
+            }
+            layer.onClick(event.getSlot() / 9, event);
+            updateInventory();
+            return;
+        }
+        if (event.getSlot() == 49) {
+            if (event.isLeftClick()) {
+                try {
+                    target.getInventory().setItemInMainHand(banner);
+                } catch (Throwable t) {
+                    target.getInventory().setItemInHand(banner);
+                }
+            } else {
+                target.getInventory().addItem(banner);
+            }
+        }
+    }
+
+    @Override
+    public void onDrag(InventoryDragEvent event) {
+    }
+
+    @Override
+    public void onOpen(InventoryOpenEvent event) {
+        updateInventory();
+    }
+
+    @Override
+    public @NotNull Inventory getInventory() {
+        return inventory;
+    }
+
+    @Override
+    public Player getTargetPlayer() {
+        return target;
+    }
+
+    @SuppressWarnings("deprecation")
+    private void updateInventory() {
+        meta.setPatterns(new ArrayList<>());
+        ItemStack item = banner.clone();
+        item.setItemMeta(meta);
+        meta = (BannerMeta) ItemUtils.getMeta(item);
+        item.setAmount(1);
+        this.getInventory().setItem(0, item);
+        DyeColor bcolor = Util.getColorFromBanner(item);
+        item = Util.getDyeItemFromColor(bcolor);
+        ItemMeta bmeta = ItemUtils.getMeta(item);
+        bmeta.addItemFlags(ItemFlag.values());
+        loadLanguageDescription(bmeta, SUB_PATH + "buttons.color", "%color%", Aliases.COLOR.getName(bcolor));
+        item.setItemMeta(bmeta);
+        this.getInventory().setItem(27, item);
+
+        for (int i = 1; i < 9; i++) {
+            BannerData layer = layers.get(i - 1);
+            item = layer.getPositionItem();
+            item.setAmount(i);
+            this.getInventory().setItem(i + 9, item);
+            this.getInventory().setItem(i + 18, layer.getPatternTypeItem());
+            this.getInventory().setItem(i + 27, layer.getColorItem());
+            if (layer.active) {
+                meta.addPattern(layer.getPattern());
+                item = banner.clone();
+                item.setItemMeta(meta);
+                meta = (BannerMeta) ItemUtils.getMeta(item);
+                this.getInventory().setItem(i, item);
+            } else {
+                this.getInventory().setItem(i, null);
+            }
+        }
+        item = banner.clone();
+        item.setItemMeta(meta);
+        this.getInventory().setItem(49, item);
+        ItemUtils.getHandMainItem(getTargetPlayer()).setItemMeta(meta);
+    }
+
+    private class BannerData {
+        @Getter
+        private Pattern pattern;
+        private boolean active = false;
+
+        private BannerData() {
+            pattern = new Pattern(DyeColor.values()[(int) (Math.random() * DyeColor.values().length)],
+                    TYPES[(int) (Math.random() * TYPES.length)]);
+        }
+
+        private BannerData(Pattern pattern) {
+            this.pattern = pattern == null ? new Pattern(DyeColor.BLUE, TYPES[0]) : pattern;
+            active = true;
+        }
+
+        public ItemStack getPatternTypeItem() {
+            if (!active) {
+                return null;
+            }
+            ItemStack item = new ItemStack(Material.WHITE_BANNER);
+            BannerMeta bMeta = (BannerMeta) ItemUtils.getMeta(item);
+            bMeta.addPattern(new Pattern(DyeColor.BLACK, pattern.getPattern()));
+            bMeta.addItemFlags(ItemFlag.values());
+            loadLanguageDescription(bMeta, SUB_PATH + "buttons.type", "%type%",
+                    Aliases.PATTERN_TYPE.getName(pattern.getPattern()));
+            item.setItemMeta(bMeta);
+            return item;
+        }
+
+        public ItemStack getColorItem() {
+            if (!active)
+                return null;
+            ItemStack item = Util.getDyeItemFromColor(pattern.getColor());
+            ItemMeta meta = ItemUtils.getMeta(item);
+            meta.addItemFlags(ItemFlag.values());
+            loadLanguageDescription(meta, SUB_PATH + "buttons.color", "%color%",
+                    Aliases.COLOR.getName(pattern.getColor()));
+            item.setItemMeta(meta);
+            return item;
+        }
+
+        public ItemStack getPositionItem() {
+            ItemStack item = active ? getGuiItem("banner.buttons.position-active", Material.ITEM_FRAME)
+                    : getGuiItem("banner.buttons.position-inactive", Material.GRAY_DYE);
+            ItemMeta meta = ItemUtils.getMeta(item);
+            meta.addItemFlags(ItemFlag.values());
+            loadLanguageDescription(meta, SUB_PATH + "buttons.position", "%middle_click%",
+                    getLanguageMessage("gui.middleclick." + (getTargetPlayer().getGameMode() == GameMode.CREATIVE ? "creative" : "other")));
+            item.setItemMeta(meta);
+            return item;
+        }
+
+        public void onClick(int line, InventoryClickEvent event) {
+            switch (line) {
+                case 2 -> BannerEditor.this.openGuiNextTick(() -> new PatternSelector(this));
+                case 3 -> BannerEditor.this.openGuiNextTick(() -> new ColorSelector(this));
+            }
+        }
+
+        public void setColor(DyeColor dyeColor) {
+            pattern = new Pattern(dyeColor, pattern.getPattern());
+        }
+
+        public void setPattern(PatternType type) {
+            pattern = new Pattern(pattern.getColor(), type);
+        }
+
+    }
+
+    private class ColorSelector implements Gui {
+
+        private final BannerData data;
+        private final Inventory inventory;
+
+        public ColorSelector(BannerData data) {
+            this.data = data;
+            Component title = getLanguageComponent(SUB_PATH + "color_selector_title");
+            this.inventory = Bukkit.createInventory(this, (6) * 9, title);
+            int i = 0;
+            for (DyeColor color : DyeColor.values()) {
+                ItemStack item = Util.getDyeItemFromColor(color);
+                ItemMeta meta = ItemUtils.getMeta(item);
+                loadLanguageDescription(meta, SUB_PATH + "buttons.color_selector_info", "%color%",
+                        Aliases.COLOR.getName(color));
+                item.setItemMeta(meta);
+                this.inventory.setItem(i, item);
+                i++;
+            }
+        }
+
+        @Override
+        public @NotNull ItemEdit getPlugin() {
+            return ItemEdit.get();
+        }
+
+        @Override
+        public void onClose(InventoryCloseEvent event) {
+
+        }
+
+        @SuppressWarnings("deprecation")
+        @Override
+        public void onClick(InventoryClickEvent event) {
+            if (!event.getWhoClicked().equals(target)) {
+                return;
+            }
+            if (!inventory.equals(event.getClickedInventory())) {
+                return;
+            }
+            if (ItemUtils.isAirOrNull(event.getCurrentItem())) {
+                return;
+            }
+            if (data != null) {
+                data.setColor(DyeColor.values()[event.getSlot()]);
+            } else {
+                banner.setType(Util.getBannerItemFromColor(DyeColor.values()[event.getSlot()]));
+                meta = (BannerMeta) ItemUtils.getMeta(banner);
+            }
+            BannerEditor.this.updateInventory();
+            BannerEditor.this.openGuiNextTick(() -> BannerEditor.this);
+        }
+
+        @Override
+        public void onDrag(InventoryDragEvent event) {
+        }
+
+        @Override
+        public void onOpen(InventoryOpenEvent event) {
+        }
+
+        @Override
+        public @NotNull Inventory getInventory() {
+            return inventory;
+        }
+
+        @Override
+        public Player getTargetPlayer() {
+            return target;
+        }
+
+    }
+
+    private class PatternSelector implements Gui {
+
+        private final BannerData data;
+        private final Inventory inventory;
+
+        public PatternSelector(BannerData data) {
+            if (data == null) {
+                throw new NullPointerException();
+            }
+            this.data = data;
+            Component title = getLanguageComponent(SUB_PATH + "pattern_selector_title");
+            this.inventory = Bukkit.createInventory(this, (6) * 9, title);
+            int i = 0;
+            for (PatternType type : TYPES) {
+                ItemStack item = new ItemStack(Material.WHITE_BANNER);
+                BannerMeta bMeta = (BannerMeta) ItemUtils.getMeta(item);
+                bMeta.addPattern(new Pattern(DyeColor.BLACK, type));
+                loadLanguageDescription(bMeta, SUB_PATH + "buttons.pattern_selector_info", "%type%",
+                        Aliases.PATTERN_TYPE.getName(type));
+                item.setItemMeta(bMeta);
+                this.inventory.setItem(i, item);
+                i++;
+            }
+        }
+
+        @Override
+        public void onClose(InventoryCloseEvent event) {
+
+        }
+
+        @Override
+        public void onClick(InventoryClickEvent event) {
+            if (!event.getWhoClicked().equals(target)) {
+                return;
+            }
+            if (!inventory.equals(event.getClickedInventory())) {
+                return;
+            }
+            if (ItemUtils.isAirOrNull(event.getCurrentItem())) {
+                return;
+            }
+            data.setPattern(TYPES[event.getSlot()]);
+            BannerEditor.this.updateInventory();
+            BannerEditor.this.openGuiNextTick(() -> BannerEditor.this);
+        }
+
+        @Override
+        public void onDrag(InventoryDragEvent event) {
+        }
+
+        @Override
+        public void onOpen(InventoryOpenEvent event) {
+        }
+
+        @Override
+        public @NotNull Inventory getInventory() {
+            return inventory;
+        }
+
+        @Override
+        public Player getTargetPlayer() {
+            return target;
+        }
+
+        @Override
+        public @NotNull ItemEdit getPlugin() {
+            return ItemEdit.get();
+        }
+
+    }
+
+}

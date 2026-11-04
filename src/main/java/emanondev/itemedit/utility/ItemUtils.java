@@ -1,0 +1,214 @@
+package emanondev.itemedit.utility;
+
+import emanondev.itemedit.ItemEdit;
+import emanondev.itemedit.Util;
+import emanondev.itemedit.UtilsString;
+import net.kyori.adventure.text.Component;
+import org.bukkit.Color;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.block.banner.PatternType;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.EquipmentSlotGroup;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BookMeta;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+
+/**
+ * Utility class for working with {@link ItemStack} and {@link ItemMeta}.
+ * This class cannot be instantiated.
+ */
+public final class ItemUtils {
+
+    private ItemUtils() {
+    }
+
+    /**
+     * Retrieves the {@link ItemMeta} of an {@link ItemStack}.
+     *
+     * @param item the {@link ItemStack} to get the {@link ItemMeta} from.
+     * @return the {@link ItemMeta} of the provided item.
+     */
+    @NotNull
+    public static ItemMeta getMeta(@NotNull ItemStack item) {
+        return Objects.requireNonNull(item.getItemMeta(), "ItemMeta cannot be null");
+    }
+
+    /**
+     * Retrieves the {@link ItemStack} currently held in the main hand of a {@link Player}.
+     *
+     * @param player the {@link Player} whose main hand item is to be retrieved.
+     * @return the {@link ItemStack} in the player's main hand.
+     */
+    public static ItemStack getHandMainItem(@NotNull Player player) {
+        return player.getInventory().getItemInMainHand();
+    }
+
+    /**
+     * Sets the {@link ItemStack} currently held in the main hand of a {@link Player}.
+     *
+     * @param player the {@link Player} whose main hand item is to be set.
+     * @param item   the {@link ItemStack} to set in the player's main hand.
+     */
+    public static void setHandMainItem(@NotNull Player player, @Nullable ItemStack item) {
+        player.getInventory().setItemInMainHand(item);
+    }
+
+    /**
+     * Checks if an {@link ItemStack} is null or represents air.
+     *
+     * @param item the {@link ItemStack} to check.
+     * @return {@code true} if the item is null or its type is {@link Material#AIR}, {@code false} otherwise.
+     */
+    @Contract("null -> true")
+    public static boolean isAirOrNull(@Nullable ItemStack item) {
+        return item == null || item.getType().isAir();
+    }
+
+    /**
+     * Creates an instance of {@link AttributeModifier} based on the provided parameters.
+     *
+     * @param amount    The amount for the attribute modifier.
+     * @param operation The operation for the attribute modifier, cannot be null.
+     * @param slot      The equipment slot (group) name for the modifier, can be null. If null, defaults to {@code EquipmentSlotGroup.ANY}.
+     * @return A new {@link AttributeModifier} instance.
+     * @throws IllegalArgumentException if the provided slot is invalid in the current Minecraft version.
+     */
+    @SuppressWarnings("UnstableApiUsage")
+    public static AttributeModifier createAttributeModifier(double amount,
+                                                            @NotNull AttributeModifier.Operation operation,
+                                                            @Nullable String slot) {
+        EquipmentSlotGroup group;
+        if (slot == null) {
+            group = EquipmentSlotGroup.ANY;
+        } else {
+            group = EquipmentSlotGroup.getByName(slot.toUpperCase(Locale.ENGLISH));
+            if (group == null) {
+                group = EquipmentSlot.valueOf(slot.toUpperCase(Locale.ENGLISH)).getGroup();
+            }
+        }
+        return new AttributeModifier(Objects.requireNonNull(NamespacedKey.fromString(UUID.randomUUID().toString())),
+                amount, operation, group);
+    }
+
+    /**
+     * Retrieves all available {@link PatternType}s.
+     *
+     * @return An array of {@link PatternType} objects retrieved from the {@code Registry.BANNER_PATTERN}.
+     */
+    public static PatternType[] getPatternTypes() {
+        List<PatternType> result = new ArrayList<>();
+        Registry.BANNER_PATTERN.forEach(result::add);
+        return result.toArray(new PatternType[0]);
+    }
+
+    /**
+     * Retrieves filtered {@link PatternType}s excluding non-craftable patterns in certain Minecraft versions.
+     *
+     * @return An array of {@link PatternType} objects with {@code PatternType.BASE} always removed.
+     * If the version is 1.20.6 but not after 1.21, {@code PatternType.FLOW} and {@code PatternType.GUSTER}
+     * are also removed as they are not craftable.
+     */
+    public static PatternType[] getPatternTypesFiltered() {
+        PatternType[] val = getPatternTypes();
+        ArrayList<PatternType> list = new ArrayList<>(Arrays.asList(val));
+        list.remove(PatternType.BASE);
+        return list.toArray(new PatternType[0]);
+    }
+
+    public static ItemMeta setColor(@NotNull ItemMeta meta, @NotNull Color color) {
+        if ((meta instanceof PotionMeta)) {
+            ((PotionMeta) meta).setColor(color);
+            return meta;
+        }
+        try {
+            if ((meta instanceof LeatherArmorMeta leatherArmorMeta)) {
+                leatherArmorMeta.setColor(color);
+                return meta;
+            }
+        } catch (Throwable ignored) { //might be old game version without LeatherArmorMeta
+        }
+        return meta;
+    }
+
+    public static Color getColor(@NotNull ItemMeta meta) {
+        if ((meta instanceof PotionMeta potionMeta)) {
+            return potionMeta.getColor() == null ? toColor(65, 85, 255) : potionMeta.getColor();
+        }
+        try {
+            if ((meta instanceof LeatherArmorMeta leatherArmorMeta)) {
+                leatherArmorMeta.getColor();
+                return leatherArmorMeta.getColor();
+            }
+        } catch (Throwable ignored) { //might be old game version without LeatherArmorMeta
+        }
+        return toColor(0, 0, 0);
+    }
+
+    /**
+     * Update the item, resolving player placeholders.
+     *
+     * @param item   stored item template
+     * @param player player whose placeholders should be resolved, or null to return a copy unchanged
+     */
+    public static void updateTemplate(@Nullable ItemStack item,
+                                      @Nullable Player player) {
+        if (item == null || player == null) {
+            return;
+        }
+        if (!ItemEdit.get().getConfig().loadBoolean("serveritem.replace-holders", true)) {
+            return;
+        }
+
+        String[] holders = new String[]{"%player_name%", player.getName(),
+                "%player_uuid%", player.getUniqueId().toString()};
+        ItemMeta meta = ItemUtils.getMeta(item);
+        Component displayName = meta.displayName();
+        if (displayName != null) {
+            if (Util.isDeferredItemTemplate(displayName)) {
+                String raw = ((net.kyori.adventure.text.TextComponent) displayName).content();
+                String expanded = UtilsString.replacePlaceholders(raw, player, holders);
+                meta.displayName(Util.formatComponent(player, expanded, null));
+            } else {
+                meta.displayName(UtilsString.replacePlaceholders(displayName, player, holders));
+            }
+        }
+
+        if (meta.hasLore()) {
+            meta.lore(meta.lore().stream()
+                    .map(line -> {
+                        if (Util.isDeferredItemTemplate(line)) {
+                            String raw = ((net.kyori.adventure.text.TextComponent) line).content();
+                            String expanded = UtilsString.replacePlaceholders(raw, player, holders);
+                            return Util.formatComponent(player, expanded, null);
+                        }
+                        return UtilsString.replacePlaceholders(line, player, holders);
+                    })
+                    .toList());
+        }
+
+        if (meta instanceof BookMeta bookMeta && bookMeta.author() != null) {
+            bookMeta.author(UtilsString.replacePlaceholders(bookMeta.author(), player, holders));
+        }
+        item.setItemMeta(meta);
+    }
+
+    private static Color toColor(int red, int green, int blue) {
+        return Color.fromRGB(limitColor(red), limitColor(green), limitColor(blue));
+    }
+
+    private static int limitColor(int color) {
+        return Math.clamp(color, 0, 255);
+    }
+
+}

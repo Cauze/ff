@@ -1,0 +1,129 @@
+package emanondev.itemedit.aliases;
+
+import emanondev.itemedit.APlugin;
+import emanondev.itemedit.YMLConfig;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+
+@Slf4j
+public abstract class AliasSet<T> implements IAliasSet<T> {
+    @Getter
+    private final String id;
+    private final HashMap<String, T> map = new HashMap<>();
+    @Getter
+    private final APlugin plugin;
+    private final YMLConfig config;
+
+    public AliasSet(String id, @NotNull APlugin plugin) {
+        this.id = id.toLowerCase(Locale.ENGLISH);
+        this.plugin = plugin;
+        this.config = plugin.getConfig("aliases.yml");
+    }
+
+    public void reload() {
+        map.clear();
+        for (T value : getValues()) {
+            String path = this.id + "." + getPathName(value);
+            String val = config.getString(path, null);
+            boolean ok = true;
+            if (val == null || val.isEmpty()) {
+                val = getDefaultName(value);
+                ok = false;
+            }
+            if (val == null) {
+                NullPointerException e = new NullPointerException(value == null ? "null value"
+                        : value + " of " + value.getClass().getSimpleName() + " has null name");
+                log.warn(e.getMessage(), e);
+                continue;
+            }
+            if (val.contains(" ") || !val.equals(val.toLowerCase(Locale.ENGLISH))) {
+                val = val.toLowerCase(Locale.ENGLISH).replace(" ", "_");
+                ok = false;
+            }
+            if (map.containsKey(val)) {
+                int index = 1;
+                while (map.containsKey(val + index)) {
+                    index++;
+                }
+                val = val + index;
+                ok = false;
+            }
+            map.put(val, value);
+            if (!ok) {
+                config.set(path, val);
+                config.save();
+            }
+        }
+    }
+
+    /**
+     * @return default name, for autogeneration
+     */
+    public String getDefaultName(T value) {
+        return getPathName(value);
+    }
+
+    /**
+     * @see #getDefaultName(Object)
+     * @see #getPathName(Object)
+     */
+    @Deprecated
+    public abstract String getName(T value);
+
+    /**
+     * @return path for specified value (set path not included)
+     */
+    public String getPathName(T value) {
+        return getName(value);
+    }
+
+    public abstract Collection<T> getValues();
+
+    public List<String> getAliases() {
+        return new ArrayList<>(map.keySet());
+    }
+
+    public @Nullable T convertAlias(String alias) {
+        return map.get(alias.toLowerCase(Locale.ENGLISH));
+    }
+
+    public @Nullable String convertValue(T value) {
+        for (Map.Entry<String, T> entry : map.entrySet()) {
+            if (Objects.equals(entry.getValue(), value)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    protected void set(String alias, T obj) {
+        if (obj == null || alias == null) {
+            throw new NullPointerException();
+        }
+        if (alias.isEmpty()) {
+            throw new IllegalArgumentException();
+        }
+        alias = alias.replace(" ", "_").toLowerCase(Locale.ENGLISH);
+
+        String path = this.id + "." + getPathName(obj);
+        if (alias.equals(config.get(path))) {
+            return;
+        }
+
+        if (map.containsKey(alias)) {
+            throw new IllegalArgumentException("Alias " + alias
+                    + " is already used, check aliases.yml avoid using the same alias for different things");
+        }
+
+        map.remove(config.get(path)); //TODO to fix
+        map.put(alias, obj);
+
+        config.set(path, alias);
+        config.save();
+    }
+
+}

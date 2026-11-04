@@ -1,0 +1,11 @@
+goat_horn_sound:
+  feel_goat_horn: feel
+  dream_goat_horn: dream
+  sing_goat_horn: sing
+  yearn_goat_horn: yearn
+  seek_goat_horn: seek
+  ponder_goat_horn: ponder
+  call_goat_horn: call
+  admire_goat_horn: admire
+equip_group:
+  hand: hands

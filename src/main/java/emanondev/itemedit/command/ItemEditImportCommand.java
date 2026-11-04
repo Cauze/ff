@@ -1,0 +1,132 @@
+package emanondev.itemedit.command;
+
+import emanondev.itemedit.ItemEdit;
+import emanondev.itemedit.Util;
+import emanondev.itemedit.utility.CompleteUtility;
+import lombok.extern.slf4j.Slf4j;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabExecutor;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.io.BukkitObjectInputStream;
+import org.jetbrains.annotations.NotNull;
+import org.yaml.snakeyaml.external.biz.base64Coder.Base64Coder;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+
+@Slf4j
+public class ItemEditImportCommand implements TabExecutor {
+
+    private final ItemEdit plugin;
+    private final String permission;
+
+    public ItemEditImportCommand() {
+        this.plugin = ItemEdit.get();
+        this.permission = "itemedit.itemeditimport";
+    }
+
+    @Override
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        if (args.length == 1) {
+            return CompleteUtility.complete(args[0], Collections.singletonList("itemeditor"));
+        }
+        return List.of();
+    }
+
+    public void sendPermissionLackMessage(@NotNull String permission, CommandSender sender) {
+        plugin.getTranslator().send(sender, "lack-permission",
+                "%permission%", permission,
+                "%prefix%", plugin.getTranslator().translateOrEmptyRaw(sender, "generic.help.prefix"));
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        if (!sender.hasPermission(permission)) {
+            sendPermissionLackMessage(permission, sender);
+            return true;
+        }
+
+
+        if (args.length == 0) {
+            plugin.getTranslator().send(sender, "itemeditimport.help");
+            return true;
+        }
+        switch (args[0].toLowerCase(Locale.ENGLISH)) {
+            case "itemeditor" -> {
+                File[] files = new File("plugins" + File.separator + "ItemEditor" + File.separator + "items").listFiles();
+                if (files == null || files.length == 0) {
+                    Util.sendComponent(sender, plugin.getTranslator()
+                            .translate(sender, "itemeditimport.itemeditor.import-empty"));
+                    return true;
+                }
+                List<String> importedIds = new ArrayList<>();
+                int max = files.length;
+                for (File file : files) {
+                    String name = file.getName().replace(".yml", "");
+                    try {
+                        ItemEdit.get().getServerStorage().validateID(name);
+                    } catch (Exception e) {
+                        Util.sendComponent(sender, plugin.getTranslator()
+                                .translate(sender, "itemeditimport.itemeditor.invalid-id",
+                                        "%id%", name));
+                        continue;
+                    }
+                    if (ItemEdit.get().getServerStorage().getItem(name) != null) {
+                        Util.sendComponent(sender, plugin.getTranslator()
+                                .translate(sender, "itemeditimport.itemeditor.already-used-id",
+                                        "%id%", name));
+                        continue;
+                    }
+
+                    try {
+                        ItemStack item = fromBase64(YamlConfiguration.loadConfiguration(file).getString("Item"));
+                        ItemEdit.get().getServerStorage().setItem(name, item);
+                        importedIds.add(name);
+                    } catch (Exception e) {
+                        Util.sendComponent(sender, plugin.getTranslator()
+                                .translate(sender, "itemeditimport.itemeditor.unable-to-get-item",
+                                        "%id%", name));
+                        log.warn("Unable to import item '{}'", name, e);
+                        continue;
+                    }
+                }
+                if (importedIds.isEmpty()) {
+                    Util.sendComponent(sender, plugin.getTranslator()
+                            .translate(sender, "itemeditimport.itemeditor.import-unsuccess",
+                                    "%ids%", String.join(", ", importedIds),
+                                    "%max%", String.valueOf(max),
+                                    "%done%", String.valueOf(importedIds.size())));
+                } else {
+                    Util.sendComponent(sender, plugin.getTranslator()
+                            .translate(sender, "itemeditimport.itemeditor.import-success",
+                                    "%ids%", String.join(", ", importedIds)
+                                    , "%max%", String.valueOf(max),
+                                    "%done%", String.valueOf(importedIds.size())));
+                }
+                return true;
+            }
+        }
+        Util.sendComponent(sender, plugin.getTranslator().translate(sender, "itemeditimport.help"));
+        return true;
+    }
+
+    private static ItemStack fromBase64(String data) throws IOException {
+        try {
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(Base64Coder.decodeLines(data));
+            BukkitObjectInputStream dataInput = new BukkitObjectInputStream(inputStream);
+            ItemStack item = (ItemStack) dataInput.readObject();
+            dataInput.close();
+            return item;
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Unable to decode class type.", e);
+        }
+    }
+
+}

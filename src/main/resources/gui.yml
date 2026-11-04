@@ -1,0 +1,39 @@
+buttons:
+  previous-page:
+    material: ARROW
+  next-page:
+    material: ARROW
+  back:
+    material: BARRIER
+playeritems:
+  rows: 5
+  page-info:
+    material: NAME_TAG
+serveritems:
+  rows: 5
+  page-info:
+    material: NAME_TAG
+firework:
+  buttons:
+    power:
+      material: GUNPOWDER
+    type-ball:
+      material: FIREWORK_STAR
+    type-ball-large:
+      material: FIRE_CHARGE
+    type-burst:
+      material: FEATHER
+    type-creeper:
+      material: CREEPER_HEAD
+    type-star:
+      material: GOLD_NUGGET
+    flags-trail:
+      material: DIAMOND
+    flags-no-trail:
+      material: GRAY_DYE
+banner:
+  buttons:
+    position-active:
+      material: ITEM_FRAME
+    position-inactive:
+      material: GRAY_DYE
